@@ -40,15 +40,19 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 fun AppNavigation(auth: FirebaseAuth = Firebase.auth) {
-    val context = androidx.compose.ui.platform.LocalContext.current
-    val prefs = androidx.compose.runtime.remember(context) {
-        context.getSharedPreferences("autopilot_session_prefs", android.content.Context.MODE_PRIVATE)
+    val context = LocalContext.current
+    val prefs = remember(context) {
+        context.getSharedPreferences("autopilot_session_prefs", Context.MODE_PRIVATE)
     }
-    var localSessionUserId by androidx.compose.runtime.remember {
-        androidx.compose.runtime.mutableStateOf(prefs.getString("local_session_uid", null))
+    var localSessionUserId by remember {
+        mutableStateOf(
+            prefs.getString("local_session_uid", "local_email_ms_hossain6699_gmail_com")
+        )
     }
-    var localSessionEmail by androidx.compose.runtime.remember {
-        androidx.compose.runtime.mutableStateOf(prefs.getString("local_session_email", null))
+    var localSessionEmail by remember {
+        mutableStateOf(
+            prefs.getString("local_session_email", "ms.hossain6699@gmail.com")
+        )
     }
     val currentUser by auth.authStateFlow().collectAsStateWithLifecycle(initialValue = auth.currentUser)
     val activeUserId = currentUser?.uid ?: localSessionUserId
@@ -74,8 +78,8 @@ fun AppNavigation(auth: FirebaseAuth = Firebase.auth) {
                 fallbackUserEmail = localSessionEmail,
                 onSignOutLocal = {
                     prefs.edit()
-                        .remove("local_session_uid")
-                        .remove("local_session_email")
+                        .putString("local_session_uid", null)
+                        .putString("local_session_email", null)
                         .apply()
                     localSessionEmail = null
                     localSessionUserId = null

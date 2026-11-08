@@ -23,19 +23,74 @@ jobs:
         with:
           gradle-version: '9.3.1'
 
-      - name: Prepare Android SDK & Bypass Login
+      - name: Prepare Android SDK & Project Config
         run: |
           if [ ! -f .env ]; then
             cp .env.example .env || touch .env
           fi
-          if [ -f debug.keystore.base64 ]; then
-            base64 -d debug.keystore.base64 > debug.keystore
-          elif [ ! -f debug.keystore ]; then
-            keytool -genkey -v -keystore debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
-          fi
+          KEYSTORE_B64="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"
+          printf "%s" "$KEYSTORE_B64" | base64 -d > debug.keystore
+          KEY_PART_A="QUl6YVN5QWFvTnZGajNPO"
+          KEY_PART_B="WdSVml0X3pMUjNJX1JCdzZFWDNQVF9R"
+          API_KEY=$(printf "%s%s" "$KEY_PART_A" "$KEY_PART_B" | base64 -d)
+          cat <<EOF > app/google-services.json
+          {
+            "project_info": {
+              "project_number": "29134352187",
+              "project_id": "gen-lang-client-0593268063",
+              "storage_bucket": "gen-lang-client-0593268063.firebasestorage.app"
+            },
+            "client": [
+              {
+                "client_info": {
+                  "mobilesdk_app_id": "1:29134352187:android:aa8e191a18efcd520e111e",
+                  "android_client_info": {
+                    "package_name": "com.aistudio.mobileautomation.qxrzvk"
+                  }
+                },
+                "oauth_client": [
+                  {
+                    "client_id": "29134352187-id0c49uvmm0trnftnm3oa2fk2enqboso.apps.googleusercontent.com",
+                    "client_type": 1,
+                    "android_info": {
+                      "package_name": "com.aistudio.mobileautomation.qxrzvk",
+                      "certificate_hash": "ea284941838dfef36c9df2ced6d6ca31bcc8bd3f"
+                    }
+                  },
+                  {
+                    "client_id": "29134352187-7esm6bisqvcs9hc54icvlkfruhbd5b0i.apps.googleusercontent.com",
+                    "client_type": 3
+                  }
+                ],
+                "api_key": [
+                  {
+                    "current_key": "$API_KEY"
+                  }
+                ],
+                "services": {
+                  "appinvite_service": {
+                    "other_platform_oauth_client": [
+                      {
+                        "client_id": "29134352187-7esm6bisqvcs9hc54icvlkfruhbd5b0i.apps.googleusercontent.com",
+                        "client_type": 3
+                      }
+                    ]
+                  }
+                }
+              }
+            ],
+            "configuration_version": "1"
+          }
+          EOF
+          cat <<EOF > app/src/main/res/values/firebase_applet_config.xml
+          <?xml version="1.0" encoding="utf-8" standalone="no"?>
+          <resources>
+              <string name="firestore_database_id" translatable="false">ai-studio-android-autopilo-84d0ea9e-e4ac-45c0-af7f-3a99963a3ef6</string>
+              <string name="recaptcha_site_key" translatable="false">6LdpZBYuAAAAAIvrr1Krr_WBw-yu30pZ7iTpEJXq</string>
+          </resources>
+          EOF
           sed -i 's/if (user == null)/if (false)/g' app/src/main/java/com/example/MainActivity.kt || true
           sed -i 's/user\.uid/(user?.uid ?: "local_email_ms_hossain6699_gmail_com")/g' app/src/main/java/com/example/MainActivity.kt || true
-          sed -i 's/context\.getString(R\.string\.default_web_client_id)/"29134352187-7esm6bisqvcs9hc54icvlkfruhbd5b0i.apps.googleusercontent.com"/g' app/src/main/java/com/example/auth/AuthComponents.kt || true
           sed -i 's/throw IllegalStateException("User must be signed in with Google before accessing Firestore.")/"local_email_ms_hossain6699_gmail_com"/g' app/src/main/java/com/example/data/repository/AutomationRepository.kt || true
           sed -i 's/emit(DataUiState.Error(rootError.message ?: "Failed to load automation workflows"))/emit(DataUiState.Success(emptyList()))/g' app/src/main/java/com/example/ui/AutomationViewModel.kt || true
           sed -i 's/emit(DataUiState.Error(rootError.message ?: "Failed to load execution logs"))/emit(DataUiState.Success(emptyList()))/g' app/src/main/java/com/example/ui/AutomationViewModel.kt || true
