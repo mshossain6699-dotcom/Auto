@@ -76,7 +76,9 @@ import com.google.firebase.firestore.FirebaseFirestore
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MainFeatureScreen(
-    currentUserId: String
+    currentUserId: String,
+    fallbackUserEmail: String? = null,
+    onSignOutLocal: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -92,7 +94,7 @@ fun MainFeatureScreen(
                 val databaseId = AutomationRepository.resolveFirestoreDatabaseId(app)
                 val db = FirebaseFirestore.getInstance(databaseId)
                 AutomationViewModel(
-                    repository = AutomationRepository(db),
+                    repository = AutomationRepository(db, fallbackUserId = currentUserId),
                     aiRepository = AiAutomationRepository(),
                     deviceEngine = DeviceControlEngine(app.applicationContext),
                     currentUserId = currentUserId
@@ -136,7 +138,7 @@ fun MainFeatureScreen(
         }
     }
 
-    val userEmail = Firebase.auth.currentUser?.email ?: "Operator"
+    val userEmail = Firebase.auth.currentUser?.email ?: fallbackUserEmail ?: "Operator"
 
     Scaffold(
         contentWindowInsets = WindowInsets.safeDrawing,
@@ -185,7 +187,7 @@ fun MainFeatureScreen(
                         )
                     }
                     IconButton(
-                        onClick = { signOut(credentialManager, scope) },
+                        onClick = { signOut(credentialManager, scope, onSignOutComplete = onSignOutLocal) },
                         modifier = Modifier.testTag("sign_out_button")
                     ) {
                         Icon(

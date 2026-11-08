@@ -1,5 +1,6 @@
 package com.example
 
+import android.content.Context
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -7,6 +8,10 @@ import androidx.activity.enableEdgeToEdge
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.auth.AuthScreen
 import com.example.auth.authStateFlow
@@ -35,13 +40,47 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 fun AppNavigation(auth: FirebaseAuth = Firebase.auth) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val prefs = androidx.compose.runtime.remember(context) {
+        context.getSharedPreferences("autopilot_session_prefs", android.content.Context.MODE_PRIVATE)
+    }
+    var localSessionUserId by androidx.compose.runtime.remember {
+        androidx.compose.runtime.mutableStateOf(prefs.getString("local_session_uid", null))
+    }
+    var localSessionEmail by androidx.compose.runtime.remember {
+        androidx.compose.runtime.mutableStateOf(prefs.getString("local_session_email", null))
+    }
     val currentUser by auth.authStateFlow().collectAsStateWithLifecycle(initialValue = auth.currentUser)
-    val user = currentUser
-    if (user == null) {
-        AuthScreen(onAuthSuccess = {})
+    val activeUserId = currentUser?.uid ?: localSessionUserId
+
+    if (activeUserId == null) {
+        AuthScreen(
+            onAuthSuccess = {},
+            onLocalEmailLogin = { email ->
+                val cleanEmail = email.trim().lowercase().ifBlank { "ms.hossain6699@gmail.com" }
+                val uid = "local_email_" + cleanEmail.replace(Regex("[^a-z0-9]"), "_")
+                prefs.edit()
+                    .putString("local_session_uid", uid)
+                    .putString("local_session_email", cleanEmail)
+                    .apply()
+                localSessionEmail = cleanEmail
+                localSessionUserId = uid
+            }
+        )
     } else {
-        key(user.uid) {
-            MainFeatureScreen(currentUserId = user.uid)
+        key(activeUserId) {
+            MainFeatureScreen(
+                currentUserId = activeUserId,
+                fallbackUserEmail = localSessionEmail,
+                onSignOutLocal = {
+                    prefs.edit()
+                        .remove("local_session_uid")
+                        .remove("local_session_email")
+                        .apply()
+                    localSessionEmail = null
+                    localSessionUserId = null
+                }
+            )
         }
     }
 }

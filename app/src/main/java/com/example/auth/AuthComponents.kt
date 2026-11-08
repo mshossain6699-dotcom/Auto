@@ -163,7 +163,7 @@ fun onGoogleSignInClicked(
 
     scope.launch {
         try {
-            val result = credentialManager.getCredential(context as Activity, request)
+            val result = credentialManager.getCredential(context, request)
             val credential = result.credential
             if (credential is CustomCredential && credential.type == TYPE_GOOGLE_ID_TOKEN_CREDENTIAL) {
                 val googleIdToken = GoogleIdTokenCredential.createFrom(credential.data).idToken
@@ -176,9 +176,33 @@ fun onGoogleSignInClicked(
         } catch (e: GetCredentialCancellationException) {
             Log.w("Auth", "Google Sign-In flow cancelled or dismissed: ${e.message}", e)
             onAuthCancelled()
-        } catch (e: Exception) {
-            Log.e("Auth", "Google Sign-In failed", e)
-            onAuthError(e.localizedMessage ?: "Sign in failed")
+        } catch (primaryError: Exception) {
+            Log.w("Auth", "Primary GetSignInWithGoogleOption failed, trying GetGoogleIdOption fallback", primaryError)
+            try {
+                val fallbackGoogleIdOption = GetGoogleIdOption.Builder()
+                    .setFilterByAuthorizedAccounts(false)
+                    .setServerClientId(clientId)
+                    .setAutoSelectEnabled(false)
+                    .build()
+                val fallbackRequest = GetCredentialRequest.Builder()
+                    .addCredentialOption(fallbackGoogleIdOption)
+                    .build()
+                val fallbackResult = credentialManager.getCredential(context, fallbackRequest)
+                val credential = fallbackResult.credential
+                if (credential is CustomCredential && credential.type == TYPE_GOOGLE_ID_TOKEN_CREDENTIAL) {
+                    val googleIdToken = GoogleIdTokenCredential.createFrom(credential.data).idToken
+                    val authCredential = GoogleAuthProvider.getCredential(googleIdToken, null)
+                    Firebase.auth.signInWithCredential(authCredential).await()
+                    onAuthSuccess()
+                } else {
+                    onAuthError(primaryError.localizedMessage ?: "Sign in failed")
+                }
+            } catch (e: GetCredentialCancellationException) {
+                onAuthCancelled()
+            } catch (fallbackError: Exception) {
+                Log.e("Auth", "Google Sign-In fallback also failed", fallbackError)
+                onAuthError(fallbackError.localizedMessage ?: primaryError.localizedMessage ?: "Sign in failed")
+            }
         }
     }
 }
@@ -266,12 +290,14 @@ fun GoogleSignInButton(
 
 @Composable
 fun AuthScreen(
-    onAuthSuccess: () -> Unit
+    onAuthSuccess: () -> Unit,
+    onLocalEmailLogin: (String) -> Unit = {}
 ) {
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
     val credentialManager = remember(context) { CredentialManager.create(context) }
     var authError by remember { mutableStateOf<String?>(null) }
+    var emailInput by remember { mutableStateOf("ms.hossain6699@gmail.com") }
 
     LaunchedEffect(Unit) {
         attemptAutoSignIn(
@@ -458,12 +484,25 @@ fun AuthScreen(
                         ),
                         shape = RoundedCornerShape(12.dp)
                     ) {
-                        Text(
-                            text = authError.orEmpty(),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onErrorContainer,
-                            modifier = Modifier.padding(12.dp)
-                        )
+                        Column(modifier = Modifier.padding(12.dp)) {
+                            Text(
+                                text = authError.orEmpty(),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onErrorContainer
+                            )
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Button(
+                                onClick = {
+                                    onLocalEmailLogin(emailInput.ifBlank { "ms.hossain6699@gmail.com" })
+                                    onAuthSuccess()
+                                },
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .testTag("continue_email_fallback_button")
+                            ) {
+                                Text("Continue with ${emailInput.ifBlank { "Email" }}")
+                            }
+                        }
                     }
                 }
 
@@ -471,6 +510,71 @@ fun AuthScreen(
                     onAuthSuccess = onAuthSuccess,
                     onAuthError = { authError = it }
                 )
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
+                    )
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp)
+                    ) {
+                        Text(
+                            text = "Direct Gmail / Email Sign-In",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = "If Google Play Services OAuth is restricted on your phone, sign in directly with your email below:",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Spacer(modifier = Modifier.height(10.dp))
+                        androidx.compose.material3.OutlinedTextField(
+                            value = emailInput,
+                            onValueChange = { emailInput = it },
+                            label = { Text("Gmail / Email Address") },
+                            singleLine = true,
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("direct_email_input")
+                        )
+                        Spacer(modifier = Modifier.height(10.dp))
+                        androidx.compose.material3.OutlinedButton(
+                            onClick = {
+                                val targetEmail = emailInput.trim().ifBlank { "ms.hossain6699@gmail.com" }
+                                onLocalEmailLogin(targetEmail)
+                                onAuthSuccess()
+                            },
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(48.dp)
+                                .testTag("direct_email_login_button")
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.PlayArrow,
+                                contentDescription = null,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = "Login with Email",
+                                style = MaterialTheme.typography.labelLarge,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+                }
             }
         }
     }

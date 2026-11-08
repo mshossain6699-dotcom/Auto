@@ -23,7 +23,10 @@ import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.tasks.await
 
-class AutomationRepository(private val db: FirebaseFirestore) {
+class AutomationRepository(
+    private val db: FirebaseFirestore,
+    private val fallbackUserId: String = ""
+) {
 
     constructor(context: Context) : this(
         FirebaseFirestore.getInstance(resolveFirestoreDatabaseId(context.applicationContext))
@@ -41,17 +44,65 @@ class AutomationRepository(private val db: FirebaseFirestore) {
                 FALLBACK_DATABASE_ID
             }
         }
+
+        private val localWorkflowsState = kotlinx.coroutines.flow.MutableStateFlow<List<AutomationWorkflow>>(
+            listOf(
+                AutomationWorkflow(
+                    id = "local_wf_1",
+                    userId = "local_email_default",
+                    title = "Battery & RAM Optimizer",
+                    description = "Inspects battery health, clears background cache, and logs kernel telemetry.",
+                    triggerType = "MANUAL",
+                    scheduleCron = "",
+                    isEnabled = true,
+                    stepsJson = AutomationStep.encodeSteps(
+                        listOf(
+                            AutomationStep(
+                                id = "s1",
+                                actionType = com.example.data.model.StepActionType.SHELL_CMD,
+                                target = "dumpsys battery",
+                                note = "Check battery status"
+                            ),
+                            AutomationStep(
+                                id = "s2",
+                                actionType = com.example.data.model.StepActionType.WAIT,
+                                value = "800",
+                                note = "Wait 800ms"
+                            ),
+                            AutomationStep(
+                                id = "s3",
+                                actionType = com.example.data.model.StepActionType.OPEN_APP,
+                                target = "com.android.settings",
+                                note = "Open system settings"
+                            )
+                        )
+                    ),
+                    stepCount = 3L,
+                    runCount = 1L,
+                    lastStatus = "SUCCESS"
+                )
+            )
+        )
+        private val localLogsState = kotlinx.coroutines.flow.MutableStateFlow<List<ExecutionLog>>(emptyList())
+        private val localTelemetryState = kotlinx.coroutines.flow.MutableStateFlow<List<SyncedTelemetryLog>>(emptyList())
     }
 
     private val auth = Firebase.auth
 
+    private fun isLocalEmailId(id: String): Boolean = id.startsWith("local_email_")
+
     private fun requireUserId(): String {
-        return auth.currentUser?.uid
-            ?: throw IllegalStateException("User must be signed in with Google before accessing Firestore.")
+        auth.currentUser?.uid?.let { return it }
+        if (isLocalEmailId(fallbackUserId)) return fallbackUserId
+        throw IllegalStateException("User must be signed in with Google before accessing Firestore.")
     }
 
     fun observeWorkflows(userId: String = auth.currentUser?.uid.orEmpty()): Flow<List<AutomationWorkflow>> = flow {
-        val targetUid = userId.ifBlank { auth.currentUser?.uid ?: "unauthenticated" }
+        val targetUid = userId.ifBlank { auth.currentUser?.uid ?: fallbackUserId.ifBlank { "unauthenticated" } }
+        if (isLocalEmailId(targetUid)) {
+            emitAll(localWorkflowsState)
+            return@flow
+        }
         val path = "users/$targetUid/workflows"
         emitAll(
             db.collection("users").document(targetUid).collection("workflows")
@@ -78,7 +129,11 @@ class AutomationRepository(private val db: FirebaseFirestore) {
     }
 
     fun observeLogs(userId: String = auth.currentUser?.uid.orEmpty()): Flow<List<ExecutionLog>> = flow {
-        val targetUid = userId.ifBlank { auth.currentUser?.uid ?: "unauthenticated" }
+        val targetUid = userId.ifBlank { auth.currentUser?.uid ?: fallbackUserId.ifBlank { "unauthenticated" } }
+        if (isLocalEmailId(targetUid)) {
+            emitAll(localLogsState)
+            return@flow
+        }
         val path = "users/$targetUid/logs"
         emitAll(
             db.collection("users").document(targetUid).collection("logs")
@@ -105,7 +160,11 @@ class AutomationRepository(private val db: FirebaseFirestore) {
     }
 
     fun observeTelemetryLogs(userId: String = auth.currentUser?.uid.orEmpty()): Flow<List<SyncedTelemetryLog>> = flow {
-        val targetUid = userId.ifBlank { auth.currentUser?.uid ?: "unauthenticated" }
+        val targetUid = userId.ifBlank { auth.currentUser?.uid ?: fallbackUserId.ifBlank { "unauthenticated" } }
+        if (isLocalEmailId(targetUid)) {
+            emitAll(localTelemetryState)
+            return@flow
+        }
         val path = "users/$targetUid/telemetry_logs"
         emitAll(
             db.collection("users").document(targetUid).collection("telemetry_logs")
@@ -140,8 +199,26 @@ class AutomationRepository(private val db: FirebaseFirestore) {
         steps: List<AutomationStep>
     ): Result<String> = runCatching {
         val uid = requireUserId()
-        val docRef = db.collection("users").document(uid).collection("workflows").document()
         val stepsJson = AutomationStep.encodeSteps(steps).take(14500)
+        if (isLocalEmailId(uid)) {
+            val newId = "local_wf_${System.currentTimeMillis()}"
+            val wf = AutomationWorkflow(
+                id = newId,
+                userId = uid,
+                title = title.trim().take(120).ifBlank { "Untitled Workflow" },
+                description = description.trim().take(500),
+                triggerType = triggerType.takeIf { it in listOf("MANUAL", "SCHEDULED", "APP_LAUNCH", "AI_PROMPT") }.orEmpty().ifBlank { "MANUAL" },
+                scheduleCron = scheduleCron.trim().take(100),
+                isEnabled = isEnabled,
+                stepsJson = stepsJson,
+                stepCount = steps.size.coerceIn(0, 100).toLong(),
+                runCount = 0L,
+                lastStatus = "IDLE"
+            )
+            localWorkflowsState.value = listOf(wf) + localWorkflowsState.value
+            return@runCatching newId
+        }
+        val docRef = db.collection("users").document(uid).collection("workflows").document()
         val payload = mapOf(
             "userId" to uid,
             "title" to title.trim().take(120).ifBlank { "Untitled Workflow" },
@@ -168,6 +245,9 @@ class AutomationRepository(private val db: FirebaseFirestore) {
     }
 
     suspend fun getWorkflowById(ownerUid: String, workflowId: String): Result<AutomationWorkflow?> = runCatching {
+        if (isLocalEmailId(ownerUid)) {
+            return@runCatching localWorkflowsState.value.firstOrNull { it.id == workflowId }
+        }
         val docRef = db.collection("users").document(ownerUid).collection("workflows").document(workflowId)
         try {
             val snap = docRef.get().await()
@@ -183,6 +263,12 @@ class AutomationRepository(private val db: FirebaseFirestore) {
     suspend fun updateWorkflow(workflow: AutomationWorkflow): Result<Unit> = runCatching {
         val uid = requireUserId()
         require(workflow.id.isNotBlank()) { "Workflow ID must not be blank for update" }
+        if (isLocalEmailId(uid)) {
+            localWorkflowsState.value = localWorkflowsState.value.map {
+                if (it.id == workflow.id) workflow else it
+            }
+            return@runCatching
+        }
         val docRef = db.collection("users").document(uid).collection("workflows").document(workflow.id)
         val updates = mapOf(
             "title" to workflow.title.trim().take(120).ifBlank { "Untitled Workflow" },
@@ -208,6 +294,10 @@ class AutomationRepository(private val db: FirebaseFirestore) {
 
     suspend fun deleteWorkflow(workflowId: String): Result<Unit> = runCatching {
         val uid = requireUserId()
+        if (isLocalEmailId(uid)) {
+            localWorkflowsState.value = localWorkflowsState.value.filterNot { it.id == workflowId }
+            return@runCatching
+        }
         val docRef = db.collection("users").document(uid).collection("workflows").document(workflowId)
         try {
             docRef.delete().await()
@@ -228,6 +318,21 @@ class AutomationRepository(private val db: FirebaseFirestore) {
         durationMs: Long
     ): Result<String> = runCatching {
         val uid = requireUserId()
+        if (isLocalEmailId(uid)) {
+            val logId = "local_log_${System.currentTimeMillis()}"
+            val newLog = ExecutionLog(
+                id = logId,
+                userId = uid,
+                workflowId = workflowId.take(128).ifBlank { "adhoc_cmd" },
+                workflowTitle = workflowTitle.trim().take(120).ifBlank { "Ad-hoc Command" },
+                status = status.takeIf { it in listOf("SUCCESS", "FAILED", "WARNING") }.orEmpty().ifBlank { "SUCCESS" },
+                summary = summary.trim().take(1000).ifBlank { "Completed execution." },
+                commandOutput = commandOutput.take(5000),
+                durationMs = durationMs.coerceIn(0L, 3_600_000L)
+            )
+            localLogsState.value = listOf(newLog) + localLogsState.value
+            return@runCatching logId
+        }
         val docRef = db.collection("users").document(uid).collection("logs").document()
         val payload = mapOf(
             "userId" to uid,
@@ -252,6 +357,10 @@ class AutomationRepository(private val db: FirebaseFirestore) {
 
     suspend fun deleteLog(logId: String): Result<Unit> = runCatching {
         val uid = requireUserId()
+        if (isLocalEmailId(uid)) {
+            localLogsState.value = localLogsState.value.filterNot { it.id == logId }
+            return@runCatching
+        }
         val docRef = db.collection("users").document(uid).collection("logs").document(logId)
         try {
             docRef.delete().await()
@@ -265,6 +374,24 @@ class AutomationRepository(private val db: FirebaseFirestore) {
 
     suspend fun syncTelemetrySnapshotToCloud(telemetry: DeviceTelemetry): Result<String> = runCatching {
         val uid = requireUserId()
+        if (isLocalEmailId(uid)) {
+            val tid = "local_tel_${System.currentTimeMillis()}"
+            val entry = SyncedTelemetryLog(
+                id = tid,
+                userId = uid,
+                deviceModel = telemetry.deviceModel.trim().take(120).ifBlank { "Android Device" },
+                androidVersion = telemetry.androidVersion.trim().take(60).ifBlank { "Android" },
+                cpuUsagePercent = telemetry.cpuUsagePercent.roundToLong().coerceIn(0L, 100L),
+                batteryPercent = telemetry.batteryPercent.toLong().coerceIn(0L, 100L),
+                batteryTempTenthsC = (telemetry.batteryTempC * 10f).roundToLong().coerceIn(0L, 1000L),
+                ramUsedMb = telemetry.ramUsedMb.coerceIn(0L, 1_000_000L),
+                ramTotalMb = telemetry.ramTotalMb.coerceIn(1L, 1_000_000L),
+                networkLatencyMs = telemetry.networkLatencyMs.coerceIn(0L, 60_000L),
+                networkTransport = telemetry.networkTransport.trim().take(60).ifBlank { "Wi-Fi" }
+            )
+            localTelemetryState.value = listOf(entry) + localTelemetryState.value
+            return@runCatching tid
+        }
         val docRef = db.collection("users").document(uid).collection("telemetry_logs").document()
         val payload = mapOf(
             "userId" to uid,
@@ -292,6 +419,10 @@ class AutomationRepository(private val db: FirebaseFirestore) {
 
     suspend fun deleteTelemetryLog(telemetryId: String): Result<Unit> = runCatching {
         val uid = requireUserId()
+        if (isLocalEmailId(uid)) {
+            localTelemetryState.value = localTelemetryState.value.filterNot { it.id == telemetryId }
+            return@runCatching
+        }
         val docRef = db.collection("users").document(uid).collection("telemetry_logs").document(telemetryId)
         try {
             docRef.delete().await()
