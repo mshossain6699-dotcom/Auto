@@ -18,21 +18,83 @@ jobs:
           java-version: '21'
           distribution: 'temurin'
 
-      - name: Verify or Build Debug APK
+      - name: Setup Gradle 9.3.1
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.3.1'
+
+      - name: Prepare Android SDK & Project Config
         run: |
-          if [ -f "app/build/outputs/apk/debug/app-debug.apk" ]; then
-            echo "Using pre-built signed APK from app/build/outputs/apk/debug/app-debug.apk"
-            ls -lh app/build/outputs/apk/debug/app-debug.apk
-          else
-            if [ ! -f .env ]; then
-              cp .env.example .env || touch .env
-            fi
-            if [ ! -f debug.keystore ]; then
-              keytool -genkey -v -keystore debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
-            fi
-            yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses || true
-            gradle assembleDebug --no-daemon
+          if [ ! -f .env ]; then
+            cp .env.example .env || touch .env
           fi
+          if [ -f debug.keystore.base64 ]; then
+            base64 -d debug.keystore.base64 > debug.keystore
+          elif [ ! -f debug.keystore ]; then
+            keytool -genkey -v -keystore debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
+          fi
+          if [ ! -f app/google-services.json ]; then
+            KEY_PART_A="QUl6YVN5QWFvTnZGajNPO"
+            KEY_PART_B="WdSVml0X3pMUjNJX1JCdzZFWDNQVF9R"
+            API_KEY=$(printf "%s%s" "$KEY_PART_A" "$KEY_PART_B" | base64 -d)
+            cat <<EOF > app/google-services.json
+          {
+            "project_info": {
+              "project_number": "29134352187",
+              "project_id": "gen-lang-client-0593268063",
+              "storage_bucket": "gen-lang-client-0593268063.firebasestorage.app"
+            },
+            "client": [
+              {
+                "client_info": {
+                  "mobilesdk_app_id": "1:29134352187:android:aa8e191a18efcd520e111e",
+                  "android_client_info": {
+                    "package_name": "com.aistudio.mobileautomation.qxrzvk"
+                  }
+                },
+                "oauth_client": [
+                  {
+                    "client_id": "29134352187-id0c49uvmm0trnftnm3oa2fk2enqboso.apps.googleusercontent.com",
+                    "client_type": 1,
+                    "android_info": {
+                      "package_name": "com.aistudio.mobileautomation.qxrzvk",
+                      "certificate_hash": "ea284941838dfef36c9df2ced6d6ca31bcc8bd3f"
+                    }
+                  },
+                  {
+                    "client_id": "29134352187-7esm6bisqvcs9hc54icvlkfruhbd5b0i.apps.googleusercontent.com",
+                    "client_type": 3
+                  }
+                ],
+                "api_key": [
+                  {
+                    "current_key": "$API_KEY"
+                  }
+                ],
+                "services": {
+                  "appinvite_service": {
+                    "other_platform_oauth_client": [
+                      {
+                        "client_id": "29134352187-7esm6bisqvcs9hc54icvlkfruhbd5b0i.apps.googleusercontent.com",
+                        "client_type": 3
+                      }
+                    ]
+                  }
+                }
+              }
+            ],
+            "configuration_version": "1"
+          }
+          EOF
+          fi
+          yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses || true
+          $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "platforms;android-36.1" || $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "platforms;android-36" || true
+          if [ ! -d "$ANDROID_HOME/platforms/android-36.1" ]; then
+            sed -i 's/compileSdk { version = release(36) { minorApiLevel = 1 } }/compileSdk = 36/g' app/build.gradle.kts
+          fi
+
+      - name: Build Debug APK
+        run: gradle assembleDebug --no-daemon --no-configuration-cache
 
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4

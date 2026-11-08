@@ -89,7 +89,7 @@ fun MainFeatureScreen(
                 val app = checkNotNull(this[APPLICATION_KEY]) {
                     "APPLICATION_KEY missing from CreationExtras"
                 }
-                val databaseId = app.getString(R.string.firestore_database_id)
+                val databaseId = AutomationRepository.resolveFirestoreDatabaseId(app)
                 val db = FirebaseFirestore.getInstance(databaseId)
                 AutomationViewModel(
                     repository = AutomationRepository(db),

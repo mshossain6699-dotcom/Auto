@@ -26,10 +26,22 @@ import kotlinx.coroutines.tasks.await
 class AutomationRepository(private val db: FirebaseFirestore) {
 
     constructor(context: Context) : this(
-        FirebaseFirestore.getInstance(
-            context.applicationContext.getString(R.string.firestore_database_id)
-        )
+        FirebaseFirestore.getInstance(resolveFirestoreDatabaseId(context.applicationContext))
     )
+
+    companion object {
+        private const val FALLBACK_DATABASE_ID =
+            "ai-studio-android-autopilo-84d0ea9e-e4ac-45c0-af7f-3a99963a3ef6"
+
+        fun resolveFirestoreDatabaseId(context: Context): String {
+            val resId = context.resources.getIdentifier("firestore_database_id", "string", context.packageName)
+            return if (resId != 0) {
+                runCatching { context.getString(resId) }.getOrDefault(FALLBACK_DATABASE_ID)
+            } else {
+                FALLBACK_DATABASE_ID
+            }
+        }
+    }
 
     private val auth = Firebase.auth
 
