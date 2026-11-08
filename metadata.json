@@ -1,0 +1,6 @@
+{
+  "name": "AutoPilot AI",
+  "description": "AI-powered mobile automation studio for device telemetry, UI & gesture scripting, screen OCR analysis, and natural language workflow automation.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

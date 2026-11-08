@@ -1,0 +1,13 @@
+<resources>
+    <string name="app_name">AutoPilot AI</string>
+    <string name="tab_ai_studio">AI Studio</string>
+    <string name="tab_workflows">Workflows</string>
+    <string name="tab_ui_ocr">UI &amp; OCR</string>
+    <string name="tab_device_adb">Device &amp; Apps</string>
+    <string name="sign_in_google">Sign in with Google</string>
+    <string name="sign_out">Sign Out</string>
+    <string name="generate_workflow">Generate Automation Script</string>
+    <string name="capture_screen_ocr">Capture Current Screen &amp; Run AI OCR</string>
+    <string name="import_screenshot_ocr">Pick Screenshot for OCR</string>
+    <string name="execute_shell">Run Shell</string>
+</resources>

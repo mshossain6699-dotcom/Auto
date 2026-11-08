@@ -1,0 +1,213 @@
+{
+  "entities": {
+    "AutomationWorkflow": {
+      "title": "AutomationWorkflow",
+      "description": "User-authored mobile automation workflow with chained UI/device/app steps and scheduling, synced across devices.",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "description": "Owner Firebase Auth UID."
+        },
+        "title": {
+          "type": "string",
+          "description": "Display title of the automation workflow (1-120 chars)."
+        },
+        "description": {
+          "type": "string",
+          "description": "Natural language description or summary of the workflow (0-500 chars)."
+        },
+        "triggerType": {
+          "type": "string",
+          "enum": ["MANUAL", "SCHEDULED", "APP_LAUNCH", "AI_PROMPT"],
+          "description": "How the automation is triggered."
+        },
+        "scheduleCron": {
+          "type": "string",
+          "description": "Schedule interval or cron expression (0-100 chars)."
+        },
+        "isEnabled": {
+          "type": "boolean",
+          "description": "Whether the workflow schedule or trigger is active."
+        },
+        "stepsJson": {
+          "type": "string",
+          "description": "Serialized JSON array of automation steps (TAP, SWIPE, TYPE_TEXT, OPEN_APP, WAIT, SCREENSHOT_OCR, SHELL_CMD, CLICK_TEXT, FILL_FORM)."
+        },
+        "stepCount": {
+          "type": "integer",
+          "description": "Number of steps in the workflow (0-100)."
+        },
+        "runCount": {
+          "type": "integer",
+          "description": "Total number of times this workflow has been executed."
+        },
+        "lastStatus": {
+          "type": "string",
+          "enum": ["IDLE", "SUCCESS", "FAILED", "RUNNING"],
+          "description": "Result of the most recent execution."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of creation (FieldValue.serverTimestamp())."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of last update (FieldValue.serverTimestamp())."
+        }
+      },
+      "required": [
+        "userId",
+        "title",
+        "description",
+        "triggerType",
+        "scheduleCron",
+        "isEnabled",
+        "stepsJson",
+        "stepCount",
+        "runCount",
+        "lastStatus",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "ExecutionLog": {
+      "title": "ExecutionLog",
+      "description": "Execution history log entry for a mobile automation run or ADB/shell command.",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "description": "Owner Firebase Auth UID."
+        },
+        "workflowId": {
+          "type": "string",
+          "description": "ID of the workflow or command source."
+        },
+        "workflowTitle": {
+          "type": "string",
+          "description": "Title of the workflow or command executed."
+        },
+        "status": {
+          "type": "string",
+          "enum": ["SUCCESS", "FAILED", "WARNING"],
+          "description": "Execution outcome status."
+        },
+        "summary": {
+          "type": "string",
+          "description": "Human-readable execution summary."
+        },
+        "commandOutput": {
+          "type": "string",
+          "description": "Detailed step trace or shell output."
+        },
+        "durationMs": {
+          "type": "integer",
+          "description": "Execution duration in milliseconds."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of execution (FieldValue.serverTimestamp())."
+        }
+      },
+      "required": [
+        "userId",
+        "workflowId",
+        "workflowTitle",
+        "status",
+        "summary",
+        "commandOutput",
+        "durationMs",
+        "createdAt"
+      ]
+    },
+    "SyncedTelemetryLog": {
+      "title": "SyncedTelemetryLog",
+      "description": "Cross-device synced hardware & network telemetry snapshot recorded from a user device.",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "description": "Owner Firebase Auth UID."
+        },
+        "deviceModel": {
+          "type": "string",
+          "description": "Manufacturer and model of the reporting Android device (1-120 chars)."
+        },
+        "androidVersion": {
+          "type": "string",
+          "description": "Android OS version string (1-60 chars)."
+        },
+        "cpuUsagePercent": {
+          "type": "integer",
+          "description": "CPU utilization percentage (0-100)."
+        },
+        "batteryPercent": {
+          "type": "integer",
+          "description": "Battery charge percentage (0-100)."
+        },
+        "batteryTempTenthsC": {
+          "type": "integer",
+          "description": "Battery temperature in tenths of degrees Celsius (0-1000)."
+        },
+        "ramUsedMb": {
+          "type": "integer",
+          "description": "Used system RAM in MB."
+        },
+        "ramTotalMb": {
+          "type": "integer",
+          "description": "Total system RAM in MB."
+        },
+        "networkLatencyMs": {
+          "type": "integer",
+          "description": "Measured TCP network round-trip latency in milliseconds (0-60000)."
+        },
+        "networkTransport": {
+          "type": "string",
+          "description": "Active network transport type (1-60 chars)."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of telemetry sync (FieldValue.serverTimestamp())."
+        }
+      },
+      "required": [
+        "userId",
+        "deviceModel",
+        "androidVersion",
+        "cpuUsagePercent",
+        "batteryPercent",
+        "batteryTempTenthsC",
+        "ramUsedMb",
+        "ramTotalMb",
+        "networkLatencyMs",
+        "networkTransport",
+        "createdAt"
+      ]
+    }
+  },
+  "firestore": {
+    "/users/{userId}/workflows/{workflowId}": {
+      "schema": {
+        "$ref": "#/entities/AutomationWorkflow"
+      },
+      "description": "Per-user collection of automation workflows and recorded action scripts synced across devices."
+    },
+    "/users/{userId}/logs/{logId}": {
+      "schema": {
+        "$ref": "#/entities/ExecutionLog"
+      },
+      "description": "Per-user collection of automation execution logs and shell command traces."
+    },
+    "/users/{userId}/telemetry_logs/{telemetryId}": {
+      "schema": {
+        "$ref": "#/entities/SyncedTelemetryLog"
+      },
+      "description": "Per-user collection of device telemetry logs synced across multiple devices."
+    }
+  }
+}

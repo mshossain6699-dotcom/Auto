@@ -1,0 +1,149 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Pillar 1: Global Default-Deny Safety Net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function isValidWorkflow(data, userId) {
+      return data.userId is string && data.userId == request.auth.uid && data.userId == userId &&
+             data.title is string && data.title.size() >= 1 && data.title.size() <= 120 &&
+             data.description is string && data.description.size() <= 500 &&
+             data.triggerType is string && data.triggerType in ['MANUAL', 'SCHEDULED', 'APP_LAUNCH', 'AI_PROMPT'] &&
+             data.scheduleCron is string && data.scheduleCron.size() <= 100 &&
+             data.isEnabled is bool &&
+             data.stepsJson is string && data.stepsJson.size() >= 2 && data.stepsJson.size() <= 15000 &&
+             data.stepCount is int && data.stepCount >= 0 && data.stepCount <= 100 &&
+             data.runCount is int && data.runCount >= 0 && data.runCount <= 1000000 &&
+             data.lastStatus is string && data.lastStatus in ['IDLE', 'SUCCESS', 'FAILED', 'RUNNING'] &&
+             data.createdAt is timestamp && data.createdAt <= request.time &&
+             data.updatedAt is timestamp && data.updatedAt <= request.time;
+    }
+
+    function isValidExecutionLog(data, userId) {
+      return data.userId is string && data.userId == request.auth.uid && data.userId == userId &&
+             data.workflowId is string && data.workflowId.size() >= 1 && data.workflowId.size() <= 128 &&
+             data.workflowTitle is string && data.workflowTitle.size() >= 1 && data.workflowTitle.size() <= 120 &&
+             data.status is string && data.status in ['SUCCESS', 'FAILED', 'WARNING'] &&
+             data.summary is string && data.summary.size() >= 1 && data.summary.size() <= 1000 &&
+             data.commandOutput is string && data.commandOutput.size() <= 5000 &&
+             data.durationMs is int && data.durationMs >= 0 && data.durationMs <= 3600000 &&
+             data.createdAt is timestamp && data.createdAt <= request.time;
+    }
+
+    function isValidTelemetryLog(data, userId) {
+      return data.userId is string && data.userId == request.auth.uid && data.userId == userId &&
+             data.deviceModel is string && data.deviceModel.size() >= 1 && data.deviceModel.size() <= 120 &&
+             data.androidVersion is string && data.androidVersion.size() >= 1 && data.androidVersion.size() <= 60 &&
+             data.cpuUsagePercent is int && data.cpuUsagePercent >= 0 && data.cpuUsagePercent <= 100 &&
+             data.batteryPercent is int && data.batteryPercent >= 0 && data.batteryPercent <= 100 &&
+             data.batteryTempTenthsC is int && data.batteryTempTenthsC >= 0 && data.batteryTempTenthsC <= 1000 &&
+             data.ramUsedMb is int && data.ramUsedMb >= 0 && data.ramUsedMb <= 1000000 &&
+             data.ramTotalMb is int && data.ramTotalMb >= 1 && data.ramTotalMb <= 1000000 &&
+             data.networkLatencyMs is int && data.networkLatencyMs >= 0 && data.networkLatencyMs <= 60000 &&
+             data.networkTransport is string && data.networkTransport.size() >= 1 && data.networkTransport.size() <= 60 &&
+             data.createdAt is timestamp && data.createdAt <= request.time;
+    }
+
+    match /users/{userId}/workflows/{workflowId} {
+      allow get: if isOwner(userId) && isValidId(userId) && isValidId(workflowId) && existing().userId == request.auth.uid;
+      allow list: if isOwner(userId) && existing().userId == request.auth.uid;
+
+      allow create: if isOwner(userId) &&
+                       isValidId(userId) &&
+                       isValidId(workflowId) &&
+                       incoming().keys().hasAll([
+                         'userId', 'title', 'description', 'triggerType', 'scheduleCron',
+                         'isEnabled', 'stepsJson', 'stepCount', 'runCount', 'lastStatus',
+                         'createdAt', 'updatedAt'
+                       ]) &&
+                       incoming().keys().hasOnly([
+                         'userId', 'title', 'description', 'triggerType', 'scheduleCron',
+                         'isEnabled', 'stepsJson', 'stepCount', 'runCount', 'lastStatus',
+                         'createdAt', 'updatedAt'
+                       ]) &&
+                       isValidWorkflow(incoming(), userId);
+
+      allow update: if isOwner(userId) &&
+                       isValidId(userId) &&
+                       isValidId(workflowId) &&
+                       isValidWorkflow(incoming(), userId) &&
+                       incoming().userId == existing().userId &&
+                       incoming().createdAt == existing().createdAt &&
+                       incoming().diff(existing()).affectedKeys().hasOnly([
+                         'title', 'description', 'triggerType', 'scheduleCron',
+                         'isEnabled', 'stepsJson', 'stepCount', 'runCount', 'lastStatus',
+                         'updatedAt'
+                       ]);
+
+      allow delete: if isOwner(userId) && isValidId(userId) && isValidId(workflowId) && existing().userId == request.auth.uid;
+    }
+
+    match /users/{userId}/logs/{logId} {
+      allow get: if isOwner(userId) && isValidId(userId) && isValidId(logId) && existing().userId == request.auth.uid;
+      allow list: if isOwner(userId) && existing().userId == request.auth.uid;
+
+      allow create: if isOwner(userId) &&
+                       isValidId(userId) &&
+                       isValidId(logId) &&
+                       incoming().keys().hasAll([
+                         'userId', 'workflowId', 'workflowTitle', 'status',
+                         'summary', 'commandOutput', 'durationMs', 'createdAt'
+                       ]) &&
+                       incoming().keys().hasOnly([
+                         'userId', 'workflowId', 'workflowTitle', 'status',
+                         'summary', 'commandOutput', 'durationMs', 'createdAt'
+                       ]) &&
+                       isValidExecutionLog(incoming(), userId);
+
+      allow update: if false;
+
+      allow delete: if isOwner(userId) && isValidId(userId) && isValidId(logId) && existing().userId == request.auth.uid;
+    }
+
+    match /users/{userId}/telemetry_logs/{telemetryId} {
+      allow get: if isOwner(userId) && isValidId(userId) && isValidId(telemetryId) && existing().userId == request.auth.uid;
+      allow list: if isOwner(userId) && existing().userId == request.auth.uid;
+
+      allow create: if isOwner(userId) &&
+                       isValidId(userId) &&
+                       isValidId(telemetryId) &&
+                       incoming().keys().hasAll([
+                         'userId', 'deviceModel', 'androidVersion', 'cpuUsagePercent',
+                         'batteryPercent', 'batteryTempTenthsC', 'ramUsedMb', 'ramTotalMb',
+                         'networkLatencyMs', 'networkTransport', 'createdAt'
+                       ]) &&
+                       incoming().keys().hasOnly([
+                         'userId', 'deviceModel', 'androidVersion', 'cpuUsagePercent',
+                         'batteryPercent', 'batteryTempTenthsC', 'ramUsedMb', 'ramTotalMb',
+                         'networkLatencyMs', 'networkTransport', 'createdAt'
+                       ]) &&
+                       isValidTelemetryLog(incoming(), userId);
+
+      allow update: if false;
+
+      allow delete: if isOwner(userId) && isValidId(userId) && isValidId(telemetryId) && existing().userId == request.auth.uid;
+    }
+  }
+}
